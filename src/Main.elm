@@ -8,6 +8,7 @@ import Http
 import Json.Decode as JD
 import Json.Encode as JE
 import Model exposing (..)
+import Task
 
 
 
@@ -29,21 +30,31 @@ main =
 
 
 type Msg
-    = SavePost (Result Http.Error Post)
+    = CreatedPost (Result Http.Error Post)
     | OnInputChange String String
     | SubmitForm
+    | ResetForm FormData
+    | GotPosts (Result Http.Error (List Post))
 
 
 
 -- Actions
 
 
-createPosts : FormData -> Cmd Msg
-createPosts model =
+createPost : FormData -> Cmd Msg
+createPost model =
     Http.post
         { url = "http://localhost:3000/posts"
         , body = jsonBody (postFormEncoder model)
-        , expect = Http.expectJson SavePost postDecoder
+        , expect = Http.expectJson CreatedPost postDecoder
+        }
+
+
+fetchPosts : Cmd Msg
+fetchPosts =
+    Http.get
+        { url = "http://localhost:3000/posts"
+        , expect = Http.expectJson GotPosts postsDecoder
         }
 
 
@@ -54,7 +65,7 @@ createPosts model =
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( { posts = [], form = initalFormData }
-    , Cmd.none
+    , fetchPosts
     )
 
 
@@ -69,16 +80,30 @@ initalFormData =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        ResetForm formData ->
+            ( { model | form = formData }, Cmd.none )
+
         OnInputChange targetName targetVal ->
             ( { model | form = updateFormContent targetName targetVal model.form }, Cmd.none )
 
         SubmitForm ->
-            ( model, createPosts model.form )
+            ( model, createPost model.form )
 
-        SavePost result ->
+        GotPosts result ->
+            case result of
+                Ok posts ->
+                    ( { model | posts = posts }, Cmd.none )
+
+                Err _ ->
+                    ( model, Cmd.none )
+
+        CreatedPost result ->
             case result of
                 Ok post ->
-                    ( { model | posts = post :: model.posts }, Cmd.none )
+                    ( { model | posts = post :: model.posts }
+                    , Task.perform ResetForm <|
+                        Task.succeed initalFormData
+                    )
 
                 Err _ ->
                     ( model, Cmd.none )
@@ -202,10 +227,9 @@ decodePost json =
             []
 
 
-
--- postsDecoder : JD.Decoder (List Post)
--- postsDecoder =
---     JD.list postDecoder
+postsDecoder : JD.Decoder (List Post)
+postsDecoder =
+    JD.list postDecoder
 
 
 postDecoder : JD.Decoder Post
