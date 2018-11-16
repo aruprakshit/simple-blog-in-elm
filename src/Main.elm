@@ -26,7 +26,6 @@ main =
 
 
 -- Msg
--- (List Post)
 
 
 type Msg
